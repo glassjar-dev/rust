@@ -51,4 +51,6 @@ jobs:
             --title "wasm32-wasip1 rustc (${TAG})" \
             --notes "Automated build from debugger-sh workflow." \
             debugger-sh/build/rustc.wasm \
-            debugger-sh/build/sysroot.tar.gz
+            debugger-sh/build/rustc.wasm.br \
+            debugger-sh/build/sysroot.tar.gz \
+            debugger-sh/build/sysroot.tar.br
