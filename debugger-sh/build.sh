@@ -4,8 +4,9 @@
 # Size strategy (bootstrap.toml):
 #   - opt-level=z, fat LTO, codegen-units=1, strip=true
 #   - debug-assertions/logging/frame-pointers off
-# This removes the ~50 MiB WASM "name" section at link time; post-link wasm-opt
-# is best-effort only (often skipped when the module uses bulk-memory/sign-ext).
+# This removes the ~50 MiB WASM "name" section at link time. Post-link wasm-opt
+# then runs with the wasm features LLVM enables by default (see WASM_OPT_FEATURES);
+# the linked module has no target_features section, so they must be passed explicitly.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -137,21 +138,45 @@ install_rustc() {
   ./x.py install -j "$(nproc)"
 }
 
+# Features LLVM's default ("generic") wasm32 CPU enables. `strip = true` drops the
+# target_features custom section, so wasm-opt can't detect these and would otherwise
+# reject the module (memory.copy/memory.fill need bulk memory).
+WASM_OPT_FEATURES=(
+  --enable-bulk-memory --enable-bulk-memory-opt --enable-sign-ext
+  --enable-nontrapping-float-to-int --enable-mutable-globals --enable-multivalue
+  --enable-reference-types --enable-call-indirect-overlong
+)
+# -Os and -O3 measured the same speed (see debugger-sh/bench/README.md); -Os is smaller.
+WASM_OPT_LEVEL="${WASM_OPT_LEVEL:--Os}"
+
 optimize_rustc_wasm() {
   local wasm="$1"
-  log "Optimizing rustc.wasm... before=$(awk "BEGIN {printf \"%.1f\", $(stat -c%s "$wasm")/1048576}") MiB"
-  # Use -Os (not -Oz): -Oz has produced invalid modules in the past.
-  if wasm-opt -Os --strip-debug "$wasm" -o "${wasm}.opt" 2>/dev/null; then
-    mv "${wasm}.opt" "$wasm"
-  else
-    log "wasm-opt skipped (binary uses WASM features wasm-opt cannot validate)"
-  fi
-  if command -v wasm-strip >/dev/null 2>&1; then
-    wasm-strip "$wasm" -o "${wasm}.strip" 2>/dev/null \
-      && mv "${wasm}.strip" "$wasm" \
-      || true
-  fi
+  log "Optimizing rustc.wasm (wasm-opt $WASM_OPT_LEVEL)... before=$(awk "BEGIN {printf \"%.1f\", $(stat -c%s "$wasm")/1048576}") MiB"
+  # Fail loudly: a silently skipped wasm-opt ships an unoptimized compiler.
+  wasm-opt "$WASM_OPT_LEVEL" "${WASM_OPT_FEATURES[@]}" --strip-debug --strip-producers \
+    "$wasm" -o "${wasm}.opt"
+  mv "${wasm}.opt" "$wasm"
   log "Finished optimizing... after=$(awk "BEGIN {printf \"%.1f\", $(stat -c%s "$wasm")/1048576}") MiB"
+}
+
+# Crates in the wasm32-wasip1 sysroot that rustc never loads when compiling a
+# `-Cpanic=abort` binary (no --test, no proc-macro crates): std's backtrace stack
+# (addr2line/gimli/object/memchr) isn't a dependency on WASI, and test/getopts/
+# proc_macro/panic_unwind/... are only for other configurations. Dropping them cuts
+# sysroot.tar.gz by ~27%. Set FULL_SYSROOT=1 to keep them.
+SYSROOT_UNUSED_CRATES=(
+  addr2line getopts gimli memchr object panic_unwind proc_macro
+  rustc_literal_escaper rustc_std_workspace_std sysroot test
+)
+
+trim_sysroot() {
+  local libdir="$1/lib/rustlib/wasm32-wasip1/lib"
+  [[ "${FULL_SYSROOT:-0}" == 1 ]] && return 0
+  local crate
+  for crate in "${SYSROOT_UNUSED_CRATES[@]}"; do
+    rm -f "$libdir/lib${crate}-"*.rlib "$libdir/lib${crate}-"*.rmeta
+  done
+  log "Trimmed sysroot to $(find "$libdir" -maxdepth 1 -name '*.rlib' | wc -l) crates"
 }
 
 package_artifacts() {
@@ -175,6 +200,7 @@ package_artifacts() {
   staging="$(mktemp -d)"
   mkdir -p "$staging/sysroot/lib"
   cp -a dist/lib/rustlib "$staging/sysroot/lib/rustlib"
+  trim_sysroot "$staging/sysroot"
 
   if [[ -d dist/etc ]]; then
     mkdir -p "$staging/sysroot/etc"
@@ -185,7 +211,13 @@ package_artifacts() {
   rm -rf "$staging"
 
   gzip -t "$BUILD_OUT/sysroot.tar.gz"
-  ls -lh "$BUILD_OUT/rustc.wasm" "$BUILD_OUT/sysroot.tar.gz"
+
+  # Brotli-11 copies for serving with `Content-Encoding: br`. On-the-fly CDN brotli is far
+  # weaker (rustc.wasm: 19.1 MB on the wire vs 12.9 MB at q11). The engine accepts the
+  # plain tar the browser hands back after decoding.
+  gzip -dc "$BUILD_OUT/sysroot.tar.gz" | brotli -q 11 -c > "$BUILD_OUT/sysroot.tar.br"
+  brotli -q 11 -f -o "$BUILD_OUT/rustc.wasm.br" "$BUILD_OUT/rustc.wasm"
+  ls -lh "$BUILD_OUT/rustc.wasm" "$BUILD_OUT/rustc.wasm.br" "$BUILD_OUT/sysroot.tar.gz" "$BUILD_OUT/sysroot.tar.br"
 }
 
 main() {

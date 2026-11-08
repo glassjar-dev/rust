@@ -3,9 +3,12 @@ FROM ubuntu:22.04
 ARG DEBIAN_FRONTEND=noninteractive
 ARG WASI_SDK_VERSION=32.0
 ARG WASMER_VERSION=5.0.2
+# Ubuntu 22.04's binaryen (105) predates --enable-bulk-memory-opt and
+# --enable-call-indirect-overlong, which build.sh needs for LLVM 20+ output.
+ARG BINARYEN_VERSION=124
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash binaryen bzip2 ca-certificates curl file g++ gcc git llvm-14 llvm-14-tools \
+    bash brotli bzip2 ca-certificates curl file g++ gcc git llvm-14 llvm-14-tools \
     make ninja-build patch pkg-config python3 python3-pip python3-venv sudo wabt xz-utils zlib1g-dev \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/llvm-dwarfdump-14 /usr/local/bin/llvm-dwarfdump \
@@ -17,6 +20,12 @@ RUN curl -fsSL \
     && ln -sfn "/opt/wasi-sdk-${WASI_SDK_VERSION}-x86_64-linux" /opt/wasi-sdk
 
 ENV WASI_SDK_PATH=/opt/wasi-sdk
+
+RUN curl -fsSL \
+    "https://github.com/WebAssembly/binaryen/releases/download/version_${BINARYEN_VERSION}/binaryen-version_${BINARYEN_VERSION}-x86_64-linux.tar.gz" \
+    | tar -xz -C /opt \
+    && "/opt/binaryen-version_${BINARYEN_VERSION}/bin/wasm-opt" --version
+ENV PATH="/opt/binaryen-version_${BINARYEN_VERSION}/bin:${PATH}"
 
 RUN curl -fsSL "https://get.wasmer.io" | sh -s "v${WASMER_VERSION}" \
     && ln -sf /root/.wasmer/bin/wasmer /usr/local/bin/wasmer
