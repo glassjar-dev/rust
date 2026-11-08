@@ -21,6 +21,10 @@ cfg_select! {
         mod windows;
         use self::windows as imp;
     }
+    target_os = "wasi" => {
+        mod wasi;
+        use wasi as imp;
+    }
     _ => {
         mod unsupported;
         use unsupported as imp;
