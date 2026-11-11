@@ -4,7 +4,7 @@ The Rust compiler that [glassjar](https://github.com/glassjar-dev/engine) runs i
 this fork of rust-lang/rust built for a `wasm32-wasip1` host.
 
 ```bash
-glassjar/build.sh     # -> glassjar/dist/rustc.wasm, glassjar/dist/rust-sysroot.tar.gz
+glassjar/build.sh     # -> glassjar/dist/rustc.wasm, glassjar/dist/rust-sysroot.tar.zst
 ```
 
 `rustc.wasm` compiles a crate and links it in one run, with the `wasm-ld` it carries:
@@ -38,7 +38,7 @@ debug info) is rustc as upstream wrote it.
 | --- | --- | --- |
 | `rustc.wasm` | 62.4 MB | 34.1 MB |
 | linker | clang's 35 MB module | inside `rustc.wasm` |
-| sysroot, unpacked / gzip | 82 MB / 29.0 MB | 62 MB / 21.1 MB |
+| sysroot, unpacked / packed | 82 MB / 29.0 MB (gzip) | 62 MB / 16.5 MB (zstd) |
 
 ## Tools
 
@@ -46,4 +46,5 @@ debug info) is rustc as upstream wrote it.
   records what a student would see. `diff -r` two recordings to compare toolchains.
 - `sizes.py` attributes the code in a named build (`dist/bin/rustc.wasm`) to crates and
   functions; `who.py` says what keeps a function linked.
+- `split/` is a prototype that splits rustc.wasm into a hot and a lazily loaded cold module.
 - `llvm-config.sh` is the `llvm-config` bootstrap uses when rustc's host is WebAssembly.

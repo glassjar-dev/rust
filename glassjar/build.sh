@@ -3,9 +3,9 @@
 #
 #   rustc.wasm            rustc hosted on wasm32-wasip1. It compiles a crate and links it with
 #                         the wasm-ld it carries, so one module is the whole compiler.
-#   rust-sysroot.tar.gz   the standard library that rustc.wasm compiles programs against.
+#   rust-sysroot.tar.zst  the standard library that rustc.wasm compiles programs against.
 #
-# Runs on macOS and Linux. Needs cmake, ninja, python3, wasmtime and Binaryen's wasm-opt.
+# Runs on macOS and Linux. Needs cmake, ninja, python3, wasmtime, zstd and Binaryen's wasm-opt.
 # A first build takes about half an hour on a fast laptop; later ones reuse build/.
 #
 #   glassjar/build.sh          build both
@@ -52,9 +52,8 @@ fi
 # macOS's ranlib empties WebAssembly archives, so name the SDK's (it must be an absolute path).
 x() { ./x.py "$@" --set "target.wasm32-wasip1.ranlib=$WASI_SDK_PATH/bin/llvm-ranlib"; }
 
-# The LLVM that goes into rustc.wasm first, so that it has the WebAssembly backend only; the
-# install step then builds this machine's LLVM and rustc, and with those rustc.wasm.
-x build llvm --host wasm32-wasip1 --set llvm.targets=WebAssembly
+# Builds LLVM twice (for this machine and for WebAssembly), this machine's rustc, and with
+# those rustc.wasm.
 x install compiler/rustc library/std
 
 mkdir -p glassjar/dist
@@ -76,5 +75,6 @@ cp -R build/host/stage1/lib/rustlib/wasm32-wasip1/lib "$STAGE/"
 for crate in test proc_macro getopts rustc_literal_escaper sysroot rustc_std_workspace_std panic_unwind; do
   rm "$STAGE"/lib/lib${crate}-*
 done
-tar -cf - -C build/sysroot lib | gzip -9 > glassjar/dist/rust-sysroot.tar.gz
+# Mostly crate metadata, which zstd packs about a fifth smaller than gzip.
+tar -cf - -C build/sysroot lib | zstd -19 -T0 -q -o glassjar/dist/rust-sysroot.tar.zst
 ls -l glassjar/dist

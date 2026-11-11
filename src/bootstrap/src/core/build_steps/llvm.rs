@@ -326,7 +326,7 @@ impl Step for Llvm {
         };
         // Every user downloads a wasm-hosted rustc, so its LLVM is built for size, as bitcode
         // that rustc's final link optimizes as a whole, and carries only what that rustc
-        // runs: WebAssembly code generation at -O0 (the GLASSJAR_* switches in LLVM).
+        // runs: the WebAssembly backend at -O0 (the GLASSJAR_* switches in LLVM).
         let mut ccflags = CcFlags::default();
         let profile = if target.contains("wasi") {
             ccflags.push_all("-flto -DGLASSJAR_TINY -DGLASSJAR_O0_ONLY");
@@ -344,6 +344,7 @@ impl Step for Llvm {
                      Sparc;SystemZ;WebAssembly;X86"
             }
         };
+        let llvm_targets = if target.contains("wasi") { "WebAssembly" } else { llvm_targets };
 
         let llvm_exp_targets = match builder.config.llvm_experimental_targets {
             Some(ref s) => s,
