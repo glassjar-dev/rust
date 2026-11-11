@@ -297,6 +297,15 @@ fn main() {
     }
 
     rerun_if_changed_anything_in_dir(Path::new("llvm-wrapper"));
+    // A wasm-hosted rustc cannot spawn a linker, so it carries lld's wasm driver.
+    if target.contains("wasi") {
+        cfg.file("llvm-wrapper/WasmLdWrapper.cpp").include("../../src/llvm-project/lld/include");
+        // The switches bootstrap builds the WebAssembly LLVM with; its headers depend on them.
+        cfg.define("GLASSJAR_TINY", None).define("GLASSJAR_O0_ONLY", None);
+        for lib in ["lldWasm", "lldCommon", "LLVMOption"] {
+            println!("cargo:rustc-link-lib=static={lib}");
+        }
+    }
     cfg.file("llvm-wrapper/PassWrapper.cpp")
         .file("llvm-wrapper/RustWrapper.cpp")
         .file("llvm-wrapper/CoverageMappingWrapper.cpp")

@@ -109,3 +109,8 @@ flake.lock
 /wabt-*
 /tmp
 /rust_out
+
+## glassjar build
+/wasi-sdk
+/glassjar/dist/
+/glassjar/*.log

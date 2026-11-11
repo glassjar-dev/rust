@@ -3,8 +3,10 @@ profile = "compiler"
 change-id = 9999999
 
 [llvm]
-download-ci-llvm = true
-link-shared = true
+# Built from src/llvm-project so host headers and wasm libraries match.
+download-ci-llvm = false
+targets = "AArch64;WebAssembly;X86"
+experimental-targets = ""
 
 [rust]
 codegen-backends = ["llvm"]
@@ -16,7 +18,8 @@ debuginfo-level = 0
 # Size-optimized release build for rustc.wasm (see debugger-sh/build.sh).
 optimize = "z"
 lto = "fat"
-strip = true
+# Linked with its names so glassjar/sizes can attribute bytes; packaging strips them.
+strip = false
 codegen-units = 1
 incremental = false
 debug-assertions = false
@@ -26,12 +29,12 @@ backtrace-on-ice = false
 remap-debuginfo = true
 
 [build]
+ccache = true
 docs = false
 extended = false
 tools = []
 submodules = false
 compiler-docs = false
-build = "x86_64-unknown-linux-gnu"
 host = ["wasm32-wasip1"]
 target = ["wasm32-wasip1"]
 
@@ -40,14 +43,11 @@ prefix = "dist"
 sysconfdir = "etc"
 
 [target.'wasm32-wasip1']
-wasi-root = "wasi-sdk-32.0-x86_64-linux/share/wasi-sysroot"
-linker = "wasi-sdk-32.0-x86_64-linux/bin/clang"
+wasi-root = "wasi-sdk/share/wasi-sysroot"
+linker = "wasi-sdk/bin/clang"
 codegen-backends = ["llvm"]
 
 [target.'wasm32-wasip1-threads']
-wasi-root = "wasi-sdk-32.0-x86_64-linux/share/wasi-sysroot"
-linker = "wasi-sdk-32.0-x86_64-linux/bin/clang"
+wasi-root = "wasi-sdk/share/wasi-sysroot"
+linker = "wasi-sdk/bin/clang"
 codegen-backends = ["cranelift"]
-
-[target.'x86_64-unknown-linux-gnu']
-cc = "gcc"

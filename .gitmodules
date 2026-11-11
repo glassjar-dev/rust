@@ -24,8 +24,8 @@
 	shallow = true
 [submodule "src/llvm-project"]
 	path = src/llvm-project
-	url = https://github.com/debugger-sh/llvm.git
-	branch = main
+	url = https://github.com/glassjar-dev/llvm.git
+	branch = glassjar-tiny
 	shallow = true
 [submodule "src/doc/embedded-book"]
 	path = src/doc/embedded-book
