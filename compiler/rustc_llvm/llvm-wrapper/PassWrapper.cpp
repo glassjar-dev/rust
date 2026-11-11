@@ -567,6 +567,39 @@ extern "C" LLVMRustResult LLVMRustOptimize(
     size_t LLVMPluginsLen) {
   Module *TheModule = unwrap(ModuleRef);
   TargetMachine *TM = unwrap(TMRef);
+#ifdef GLASSJAR_O0_ONLY
+  // glassjar: this rustc compiles at -O0 only, without LTO, sanitizers, profiling or
+  // plugins, so the -O0 pipeline is all it ever schedules. Keeping the general case below
+  // out of the build is what keeps LLVM's optimizer out of rustc.wasm.
+  if (OptLevelRust != LLVMRustPassBuilderOptLevel::O0 ||
+      OptStage != LLVMRustOptStage::PreLinkNoLTO) {
+    LLVMRustSetLastError("this rustc only compiles at opt-level=0, without LTO");
+    return LLVMRustResult::Failure;
+  }
+  PassBuilder PB(TM);
+  LoopAnalysisManager LAM;
+  FunctionAnalysisManager FAM;
+  CGSCCAnalysisManager CGAM;
+  ModuleAnalysisManager MAM;
+  TargetLibraryInfoImpl TLII(TheModule->getTargetTriple());
+  if (DisableSimplifyLibCalls)
+    TLII.disableAllFunctions();
+  FAM.registerPass([&] { return TargetLibraryAnalysis(TLII); });
+  PB.registerModuleAnalyses(MAM);
+  PB.registerCGSCCAnalyses(CGAM);
+  PB.registerFunctionAnalyses(FAM);
+  PB.registerLoopAnalyses(LAM);
+  PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+  ModulePassManager MPM;
+  if (VerifyIR)
+    MPM.addPass(VerifierPass());
+  if (!NoPrepopulatePasses)
+    MPM.addPass(PB.buildO0DefaultPipeline(OptimizationLevel::O0));
+  for (Function &F : make_early_inc_range(*TheModule))
+    UpgradeCallsToIntrinsic(&F);
+  MPM.run(*TheModule, MAM);
+  return LLVMRustResult::Success;
+#else
   OptimizationLevel OptLevel = fromRust(OptLevelRust);
 
   PipelineTuningOptions PTO;
@@ -934,6 +967,7 @@ extern "C" LLVMRustResult LLVMRustOptimize(
 
   MPM.run(*TheModule, MAM);
   return LLVMRustResult::Success;
+#endif
 }
 
 // Callback to demangle function name

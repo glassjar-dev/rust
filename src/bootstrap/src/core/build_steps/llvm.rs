@@ -324,6 +324,16 @@ impl Step for Llvm {
             (true, false) => "Release",
             (true, true) => "RelWithDebInfo",
         };
+        // Every user downloads a wasm-hosted rustc, so its LLVM is built for size, as bitcode
+        // that rustc's final link optimizes as a whole, and carries only what that rustc
+        // runs: WebAssembly code generation at -O0 (the GLASSJAR_* switches in LLVM).
+        let mut ccflags = CcFlags::default();
+        let profile = if target.contains("wasi") {
+            ccflags.push_all("-flto -DGLASSJAR_TINY -DGLASSJAR_O0_ONLY");
+            "MinSizeRel"
+        } else {
+            profile
+        };
 
         // NOTE: remember to also update `bootstrap.example.toml` when changing the
         // defaults!
@@ -466,6 +476,12 @@ impl Step for Llvm {
             enabled_llvm_projects.push("clang");
         }
 
+        // A wasm-hosted rustc cannot spawn a linker, so it carries lld's wasm driver itself.
+        if target.contains("wasi") {
+            enabled_llvm_projects.push("lld");
+            cfg.define("LLD_BUILD_TOOLS", "OFF");
+        }
+
         // We want libxml to be disabled.
         // See https://github.com/rust-lang/rust/pull/50104
         cfg.define("LLVM_ENABLE_LIBXML2", "OFF");
@@ -539,7 +555,7 @@ impl Step for Llvm {
             cfg.define("LLVM_VERSION_SUFFIX", suffix);
         }
 
-        configure_cmake(builder, target, &mut cfg, true, ldflags, CcFlags::default(), &[]);
+        configure_cmake(builder, target, &mut cfg, true, ldflags, ccflags, &[]);
         configure_llvm(builder, target, &mut cfg);
 
         for (key, val) in &builder.config.llvm_build_config {

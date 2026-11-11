@@ -880,19 +880,25 @@ fn link_natively(
     // Invoke the system linker
     info!("{cmd:?}");
 
+    // WASI cannot spawn a linker: run the wasm-ld that is linked into this rustc.
     #[cfg(target_os = "wasi")]
     {
-        let cmd = cmd.command();
-        println!("Linking using {cmd:?}");
-
-        let mut args =
-            libwild::args::Args::new(|| cmd.get_args().map(|arg| arg.to_str().unwrap())).unwrap();
-        args.parse(|| cmd.get_args().map(|arg| arg.to_str().unwrap())).unwrap();
-        if let Err(err) = libwild::run(args) {
-            libwild::error::report_error_and_exit(&err);
-        } else {
-            std::process::exit(0);
+        use std::ffi::{CString, c_char, c_int};
+        unsafe extern "C" {
+            fn LLVMRustWasmLd(args: *const *const c_char, len: usize) -> c_int;
         }
+        let cmd = cmd.command();
+        // `rust-lld -flavor wasm` selects the one driver this rustc carries.
+        let args: Vec<CString> = std::iter::once(cmd.get_program())
+            .chain(cmd.get_args().skip_while(|arg| *arg == "-flavor" || *arg == "wasm"))
+            .map(|arg| CString::new(arg.as_encoded_bytes()).unwrap())
+            .collect();
+        let args: Vec<*const c_char> = args.iter().map(|arg| arg.as_ptr()).collect();
+        if unsafe { LLVMRustWasmLd(args.as_ptr(), args.len()) } != 0 {
+            sess.dcx().abort_if_errors();
+            sess.dcx().fatal("linking failed");
+        }
+        return;
     }
 
     let retry_on_segfault = env::var("RUSTC_RETRY_LINKER_ON_SEGFAULT").is_ok();

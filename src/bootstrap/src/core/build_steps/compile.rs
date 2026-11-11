@@ -1443,7 +1443,7 @@ fn rustc_llvm_env(builder: &Builder<'_>, cargo: &mut Cargo, target: TargetSelect
     }
 
     let llvm_config = if target.triple.starts_with("wasm32-wasip") {
-        builder.src.join("debugger-sh/llvm-config-wasm.sh")
+        builder.src.join("glassjar/llvm-config.sh")
     } else {
         host_llvm_config
     };
